@@ -22,6 +22,16 @@ npm run build:docs
 
 The command runs `next build`, ensures the static export uses trailing slashes for clean URLs, and copies the result from `out/` to `docs/`. Commit `docs/` (or publish it via CI) so GitHub Pages can serve it.
 
+### Deploying to a Pages Branch
+
+To publish `docs/` to a dedicated branch (defaults to `origin/gh-pages`) and strip all other files from that branch, run:
+
+```bash
+npm run deploy:docs
+```
+
+The deploy script builds the site, copies the output into `docs/`, checks out a temporary worktree for the target branch, removes everything except the `docs/` directory, commits, and pushes. Override the defaults with `DOCS_DEPLOY_BRANCH=<branch>` and/or `DOCS_DEPLOY_REMOTE=<remote>` if you need a different destination.
+
 ## Repository Notes
 
 - App Router pages live under `app/`. Add additional lessons or helpers directly next to the components that use them to keep features self-contained.

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "build:docs": "next build && node scripts/export-docs.mjs"
+    "build:docs": "next build && node scripts/export-docs.mjs && touch docs/.nojekyll",
+    "deploy:docs": "npm run build:docs && node scripts/deploy-docs.mjs"
   },
   "dependencies": {
     "next": "16.0.3",
