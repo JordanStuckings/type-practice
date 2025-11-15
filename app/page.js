@@ -70,6 +70,8 @@ const TABS = [
   { id: "profile", label: "Profile" },
   { id: "settings", label: "Settings" },
 ];
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const DICTIONARY_URL = `${BASE_PATH}/dictionary.txt`;
 
 const formatDuration = (ms) => {
   if (!ms) return "00:00";
@@ -452,7 +454,7 @@ export default function Home() {
     let cancelled = false;
     const loadDictionary = async () => {
       try {
-        const response = await fetch("/dictionary.txt");
+        const response = await fetch(DICTIONARY_URL);
         const text = await response.text();
         if (cancelled) return;
         const lines = text.split(/\r?\n/);
