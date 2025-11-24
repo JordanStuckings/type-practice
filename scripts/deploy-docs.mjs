@@ -49,7 +49,7 @@ const remoteBranchExists = () => {
 };
 
 if (!existsSync(docsDir)) {
-  console.error("docs/ directory missing. Run `npm run build:docs` before deploying.");
+  console.error("docs/ directory missing. Run `npm run build:pages` before deploying.");
   process.exit(1);
 }
 

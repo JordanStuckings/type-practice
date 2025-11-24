@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SNIPPET_LIBRARY, SUPPORTED_LANGUAGES } from "./snippetLibrary";
 
 const INITIAL_LETTERS = ["i", "a", "l", "r"];
@@ -932,6 +932,7 @@ export default function Home() {
             />
             <LessonSurface
               highlightedPrompt={highlightedPrompt}
+              lessonText={lessonText}
               onClick={() => inputRef.current?.focus()}
             />
             <p className="text-center text-xs text-slate-400">
@@ -1007,78 +1008,73 @@ function TabButton({ isActive, label, onClick }) {
   );
 }
 
-const PROMPT_LINE_CLASS =
-  "flex w-full flex-wrap justify-center gap-1 text-center font-mono text-4xl tracking-tight text-white sm:text-5xl";
+const MAX_PROMPT_CHARACTERS_PER_LINE = 23;
+const PROMPT_GRID_LINE_CLASS =
+  "grid w-full justify-center gap-3 text-center font-mono text-4xl tracking-tight text-white sm:text-5xl";
+const PROMPT_GRID_CELL_CLASS =
+  "flex min-h-[3.5rem] items-center justify-center rounded-2xl border border-white/10 bg-slate-900/40 px-2 sm:min-h-[4.5rem]";
 
-function LessonSurface({ highlightedPrompt, onClick }) {
-  const containerRef = useRef(null);
-  const measurementRef = useRef(null);
-  const [lineBreakIndex, setLineBreakIndex] = useState(() => highlightedPrompt.length);
-
-  const updateBreakIndex = useCallback(() => {
-    const measurement = measurementRef.current;
-    if (!measurement) {
-      setLineBreakIndex(highlightedPrompt.length);
-      return;
-    }
-    const characters = Array.from(measurement.children);
-    if (characters.length === 0) {
-      setLineBreakIndex(highlightedPrompt.length);
-      return;
-    }
-    const firstLineTop = characters[0].offsetTop;
-    let nextBreak = characters.length;
-    for (let i = 0; i < characters.length; i += 1) {
-      if (characters[i].offsetTop > firstLineTop + 0.5) {
-        nextBreak = i;
-        break;
+const buildPromptLineRanges = (text, maxChars = MAX_PROMPT_CHARACTERS_PER_LINE) => {
+  if (!text) return [];
+  const ranges = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + maxChars, text.length);
+    if (end < text.length && text[end] !== " ") {
+      const segment = text.slice(start, end);
+      const lastSpace = segment.lastIndexOf(" ");
+      if (lastSpace > 0) {
+        end = start + lastSpace;
       }
     }
-    setLineBreakIndex((current) => (current === nextBreak ? current : nextBreak));
-  }, [highlightedPrompt.length]);
-
-  useLayoutEffect(() => {
-    updateBreakIndex();
-  }, [highlightedPrompt, updateBreakIndex]);
-
-  useLayoutEffect(() => {
-    const target = containerRef.current;
-    if (!target) return undefined;
-    const handleResize = () => updateBreakIndex();
-    if (typeof window !== "undefined") {
-      window.addEventListener("resize", handleResize);
+    if (end === start) {
+      end = Math.min(start + maxChars, text.length);
     }
-    const resizeObserver =
-      typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => updateBreakIndex()) : null;
-    resizeObserver?.observe(target);
-    return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("resize", handleResize);
-      }
-      resizeObserver?.disconnect();
-    };
-  }, [updateBreakIndex]);
+    ranges.push({ start, end });
+    start = end;
+    while (start < text.length && text[start] === " ") {
+      start += 1;
+    }
+  }
+  return ranges;
+};
 
-  const breakPosition = Math.min(Math.max(lineBreakIndex, 0), highlightedPrompt.length);
-  const firstLine = highlightedPrompt.slice(0, breakPosition);
-  const secondLine = highlightedPrompt.slice(breakPosition);
+function LessonSurface({ highlightedPrompt, lessonText, onClick }) {
+  const promptLines = useMemo(() => {
+    if (!lessonText) {
+      return highlightedPrompt.length > 0 ? [highlightedPrompt] : [];
+    }
+    const ranges = buildPromptLineRanges(lessonText);
+    if (ranges.length === 0) {
+      return [highlightedPrompt];
+    }
+    return ranges.map(({ start, end }) => highlightedPrompt.slice(start, end));
+  }, [highlightedPrompt, lessonText]);
 
   return (
     <section
       className="relative flex min-h-[60vh] w-full items-center justify-center rounded-3xl border border-white/5 bg-slate-900/40 p-16 shadow-2xl shadow-black/40"
       onClick={onClick}
     >
-      <div ref={containerRef} className="relative flex w-full max-w-7xl flex-col items-center gap-8">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 -z-10 flex w-full items-center justify-center opacity-0"
-        >
-          <p ref={measurementRef} className={PROMPT_LINE_CLASS}>
-            {highlightedPrompt}
-          </p>
-        </div>
-        <p className={PROMPT_LINE_CLASS}>{firstLine}</p>
-        {secondLine.length > 0 ? <p className={PROMPT_LINE_CLASS}>{secondLine}</p> : null}
+      <div className="relative flex w-full max-w-7xl flex-col items-center gap-8">
+        {promptLines.map((line, index) => (
+          <div
+            key={`prompt-line-${index}`}
+            className={PROMPT_GRID_LINE_CLASS}
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(
+                1,
+                Math.min(line.length, MAX_PROMPT_CHARACTERS_PER_LINE),
+              )}, minmax(0, 1fr))`,
+            }}
+          >
+            {line.map((character, charIndex) => (
+              <span key={`prompt-char-${index}-${charIndex}`} className={PROMPT_GRID_CELL_CLASS}>
+                {character}
+              </span>
+            ))}
+          </div>
+        ))}
       </div>
     </section>
   );

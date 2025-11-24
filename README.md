@@ -17,7 +17,7 @@ Type Practice is a small Next.js app that drills common typing lessons and codin
 GitHub Pages expects static assets inside a `docs/` directory. Run:
 
 ```bash
-npm run build:docs
+npm run build:pages
 ```
 
 The command runs `next build`, ensures the static export uses trailing slashes for clean URLs, and copies the result from `out/` to `docs/`. Commit `docs/` (or publish it via CI) so GitHub Pages can serve it.
@@ -27,10 +27,12 @@ The command runs `next build`, ensures the static export uses trailing slashes f
 To publish `docs/` to a dedicated branch (defaults to `origin/gh-pages`) and strip all other files from that branch, run:
 
 ```bash
-npm run deploy:docs
+npm run deploy:pages
 ```
 
 The deploy script builds the site, copies the output into `docs/`, checks out a temporary worktree for the target branch, removes everything except the `docs/` directory, commits, and pushes. Override the defaults with `DOCS_DEPLOY_BRANCH=<branch>` and/or `DOCS_DEPLOY_REMOTE=<remote>` if you need a different destination.
+
+> **Note:** `docs/` is ignored in normal commits. Use `git add -f docs` (or rely on the deploy script) when you intentionally need to publish the folder for GitHub Pages.
 
 ## Repository Notes
 
