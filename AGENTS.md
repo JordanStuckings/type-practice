@@ -2,7 +2,7 @@
 
 ## Project Structure & Modules
 - Core App Router code lives under `app/`. `app/page.js` contains the letter drills, coding mode, analytics dashboards, and settings UI. Supporting data lives beside it in `app/snippetLibrary.js`.
-- Shared assets (dictionary word list, icons) live in `public/`. The typing lessons hydrate themselves from `public/dictionary.txt`, so update that file if you need custom vocabulary.
+- Shared assets (dictionary word list, icons) live in `public/`. The typing lessons hydrate themselves from `public/full_dictionary_en.csv`, so update that file if you need custom vocabulary or metadata tweaks.
 - Deployment helpers live under `scripts/` (`export-docs.mjs` and `deploy-docs.mjs`). Both scripts assume the static export in `out/` was produced by `next build`.
 - Static exports that will be published to GitHub Pages must land in `docs/`. When iterating locally, keep `docs/` ignored unless you are intentionally updating the hosted build.
 
@@ -27,7 +27,7 @@
 
 ## Testing & Verification
 - There is no automated suite yet. If you introduce one, keep tests alongside components (`Component.test.js`) or under `__tests__/` and document the pattern here.
-- Manual QA expectations: (1) complete lessons to trigger letter unlocks and auto-advance, (2) confirm dictionary-backed prompts load, (3) run through coding snippets (including Tab/Enter helpers), and (4) verify profile charts, stats, and persistence in localStorage.
+- Manual QA expectations: (1) complete lessons to trigger letter unlocks and auto-advance, (2) confirm metadata-backed prompts load, (3) run through coding snippets (including Tab/Enter helpers), and (4) verify profile charts, stats, and persistence in localStorage.
 - When touching Pages deployment scripts, run `npm run build:pages` to confirm the export copies into `docs/` without errors.
 
 ## Commit & Pull Request Guidelines
