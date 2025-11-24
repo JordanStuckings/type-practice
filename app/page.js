@@ -219,6 +219,13 @@ const createFallbackEntry = (word) => ({
 
 const FALLBACK_WORD_ENTRIES = FALLBACK_WORD_BANK.map((word) => createFallbackEntry(word));
 
+const WORD_FILTER_LEVELS = [
+  { allowHighObscurity: false, includeShortWords: false, includeNonRecommended: false },
+  { allowHighObscurity: true, includeShortWords: false, includeNonRecommended: false },
+  { allowHighObscurity: true, includeShortWords: true, includeNonRecommended: false },
+  { allowHighObscurity: true, includeShortWords: true, includeNonRecommended: true },
+];
+
 const mergeWithFallbackEntries = (entries) => {
   const map = new Map();
   entries.forEach((entry) => {
@@ -426,14 +433,28 @@ const buildLessonWords = (letters, seed, dictionary) => {
   if (!letters.length) return [];
   const sourceEntries = dictionary.length > 0 ? dictionary : FALLBACK_WORD_ENTRIES;
   const latestLetter = letters.at(-1);
-  const availableEntries = sourceEntries.filter(
-    (entry) =>
-      entry?.word &&
-      entry.recommended &&
-      wordUsesLetters(entry.word, letters) &&
-      entry.obscurityLevel !== "high" &&
-      entry.word.length > 2,
-  );
+  let availableEntries = [];
+  for (let i = 0; i < WORD_FILTER_LEVELS.length; i += 1) {
+    const options = WORD_FILTER_LEVELS[i];
+    const pool = sourceEntries.filter((entry) => {
+      if (!entry?.word) return false;
+      if (!wordUsesLetters(entry.word, letters)) return false;
+      if (
+        !options.includeShortWords &&
+        entry.word.length <= 2
+      )
+        return false;
+      if (!options.allowHighObscurity && entry.obscurityLevel === "high") return false;
+      if (!options.includeNonRecommended && entry.recommended === false) return false;
+      return true;
+    });
+    if (pool.length > 0) {
+      availableEntries = pool;
+      if (pool.length >= LESSON_WORD_LIMIT) {
+        break;
+      }
+    }
+  }
 
   if (availableEntries.length === 0) {
     return letters.map((letter) => `${letter}${letter}${letter}`);
