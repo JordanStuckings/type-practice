@@ -4,7 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SNIPPET_LIBRARY, SUPPORTED_LANGUAGES } from "./snippetLibrary";
 
 const INITIAL_LETTERS = ["i", "a", "l", "r"];
-const ALPHABET = "abcdefghijklmnopqrstuvwxyz".split("");
+const ALPHABET = (() => {
+  const letters = "abcdefghijklmnopqrstuvwxyz".split("");
+  const qIndex = letters.indexOf("q");
+  const uIndex = letters.indexOf("u");
+  if (qIndex >= 0 && uIndex >= 0 && uIndex > qIndex) {
+    const [uLetter] = letters.splice(uIndex, 1);
+    letters.splice(qIndex, 0, uLetter); // unlock u before q to keep prompt words realistic
+  }
+  return letters;
+})();
 const LETTER_SEQUENCE = Array.from(new Set([...INITIAL_LETTERS, ...ALPHABET]));
 
 const FALLBACK_WORD_BANK = [
