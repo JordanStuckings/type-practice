@@ -73,6 +73,42 @@ const TABS = [
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const DICTIONARY_URL = `${BASE_PATH}/dictionary.txt`;
 
+const createSeededRandom = (seed = 1) => {
+  let state = Math.abs(Math.floor(seed)) % 2147483647;
+  if (state === 0) {
+    state = 1;
+  }
+  return () => {
+    state = (state * 16807) % 2147483647;
+    return (state - 1) / 2147483646;
+  };
+};
+
+const shuffleWithSeed = (items, seed) => {
+  if (!Array.isArray(items)) return [];
+  const list = [...items];
+  const random = createSeededRandom(seed);
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+};
+
+const findOffsetByRandomLetter = (words, letters, seed) => {
+  if (!Array.isArray(words) || words.length === 0) return null;
+  if (!Array.isArray(letters) || letters.length === 0) return null;
+  const letterOrder = shuffleWithSeed(letters, seed);
+  for (let i = 0; i < letterOrder.length; i += 1) {
+    const letter = letterOrder[i];
+    const index = words.findIndex((word) => word.startsWith(letter));
+    if (index !== -1) {
+      return index;
+    }
+  }
+  return null;
+};
+
 const formatDuration = (ms) => {
   if (!ms) return "00:00";
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -121,7 +157,9 @@ const buildLessonWords = (letters, seed, dictionary) => {
 
   const selection = [];
   const limit = LESSON_WORD_LIMIT;
-  const offset = seed % pool.length;
+  const offsetSeed = seed + letters.length * 13;
+  const offsetFromLetters = findOffsetByRandomLetter(pool, letters, offsetSeed);
+  const offset = offsetFromLetters ?? (seed % pool.length);
 
   for (let i = 0; i < limit; i += 1) {
     selection.push(pool[(offset + i) % pool.length]);
@@ -142,7 +180,11 @@ const highlightLessonText = (target, typed, mistakeMap) =>
         return (
           <span
             key={`${char}-${index}`}
-            className="text-rose-400 underline decoration-rose-400 decoration-2"
+            className={
+              isCorrect
+                ? "text-amber-300 underline decoration-amber-300 decoration-2"
+                : "text-rose-400 underline decoration-rose-400 decoration-2"
+            }
           >
             {displayChar}
           </span>
@@ -186,16 +228,6 @@ const highlightLessonText = (target, typed, mistakeMap) =>
       </span>
     );
   });
-
-const mixColors = (ratio) => {
-  const start = [71, 85, 105]; // slate-600
-  const end = [16, 185, 129]; // emerald-400
-  const clamped = Math.min(Math.max(ratio, 0), 1);
-  const channel = start.map((value, index) =>
-    Math.round(value + (end[index] - value) * clamped),
-  );
-  return `rgb(${channel.join(",")})`;
-};
 
 const getSnippetAtIndex = (index) => {
   if (!SNIPPET_LIBRARY.length) return null;
@@ -1100,17 +1132,20 @@ function LessonSurface({ highlightedPrompt, lessonText, onClick }) {
 
 function LetterUnlockGrid({ unlockedCount, nextLetter, history, targetWpm }) {
   const lastWpm = history.at(-1)?.wpm ?? 0;
-  const ratio = targetWpm ? Math.min(Math.max(lastWpm / targetWpm, 0), 1) : 0;
+  const currentLetter = LETTER_SEQUENCE.at(Math.max(unlockedCount - 1, 0)) ?? null;
   return (
     <div className="flex w-full flex-wrap justify-center gap-2 rounded-3xl border border-white/5 bg-slate-900/60 p-4">
       {LETTER_SEQUENCE.map((letter, index) => {
         const baseClasses =
           "flex h-10 w-10 items-center justify-center rounded-xl border text-sm font-semibold uppercase transition-colors";
         if (index < unlockedCount) {
+          const isCurrent = letter === currentLetter;
           return (
             <span
               key={letter}
-              className={`${baseClasses} border-emerald-300 bg-emerald-500 text-slate-900`}
+              className={`${baseClasses} border-emerald-300 bg-emerald-500 text-slate-900 ${isCurrent ? "font-black ring-2 ring-emerald-200" : ""
+                }`}
+              title={isCurrent ? `Current focus · Target WPM ${targetWpm}` : undefined}
             >
               {letter}
             </span>
@@ -1118,14 +1153,11 @@ function LetterUnlockGrid({ unlockedCount, nextLetter, history, targetWpm }) {
         }
 
         if (letter === nextLetter) {
-          const backgroundColor = mixColors(ratio);
-          const textClass = ratio > 0.5 ? "text-slate-900" : "text-slate-200";
           return (
             <span
               key={letter}
-              className={`${baseClasses} ${textClass}`}
-              style={{ backgroundColor }}
-              title={`Current WPM ${lastWpm} / target ${targetWpm}`}
+              className={`${baseClasses} border-amber-300 bg-amber-300/30 text-amber-200`}
+              title={`Next unlock · Need ${Math.max(targetWpm - lastWpm, 0)} WPM boost`}
             >
               {letter}
             </span>
