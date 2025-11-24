@@ -108,7 +108,7 @@ const TABS = [
   { id: "settings", label: "Settings" },
 ];
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-const WORD_DATA_URL = `${BASE_PATH}/full_dictionary_en.csv`;
+const WORD_DATA_URL = `${BASE_PATH}/full_dictionary_en.json`;
 
 const createSeededRandom = (seed = 1) => {
   let state = Math.abs(Math.floor(seed)) % 2147483647;
@@ -201,43 +201,6 @@ const TYPING_FEATURE_WEIGHTS = {
   "y-ending": 0.1,
 };
 
-const normalizeTypingFeatures = (raw) => {
-  if (!raw) return [];
-  return raw
-    .split("|")
-    .map((token) => token.trim())
-    .filter((token) => token && token !== "none");
-};
-
-const parseNumber = (value, fallback = 0) => {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const normalizeWordRecord = (record) => {
-  if (!record) return null;
-  const rawWord = String(record.word ?? "").toLowerCase().trim();
-  if (!rawWord || !/^[a-z]+$/.test(rawWord)) return null;
-  if (rawWord.length < 2 || rawWord.length > 12) return null;
-  const typingFeatures = normalizeTypingFeatures(record.typing_features);
-  const recommended = String(record.recommended ?? "").trim().toLowerCase() === "yes";
-  return {
-    word: rawWord,
-    length: rawWord.length,
-    frequencyTier: record.frequency_tier ?? "rare",
-    frequency: parseNumber(record.frequency),
-    zipf: parseNumber(record.zipf),
-    obscurityLevel: record.obscurity_level ?? "medium",
-    lengthGroup: record.length_group ?? determineLengthGroup(rawWord.length),
-    partOfSpeech: record.part_of_speech ?? "noun",
-    domain: record.domain ?? "general",
-    complexity: record.complexity ?? "simple_root",
-    typingFeatures,
-    recommended,
-    notes: record.notes ?? "",
-  };
-};
-
 const createFallbackEntry = (word) => ({
   word,
   length: word.length,
@@ -276,6 +239,22 @@ const mergeWithFallbackEntries = (entries) => {
     }
   });
   return Array.from(map.values());
+};
+
+const sanitizeDictionaryEntries = (entries) => {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map((entry) => {
+      if (!entry || typeof entry.word !== "string") return null;
+      const normalizedWord = entry.word.toLowerCase().trim();
+      if (!normalizedWord || normalizedWord.length < 2 || normalizedWord.length > 12) {
+        return null;
+      }
+      if (!/^[a-z]+$/.test(normalizedWord)) return null;
+      if (entry.recommended === false) return null;
+      return { ...entry, word: normalizedWord };
+    })
+    .filter(Boolean);
 };
 
 const LENGTH_FALLBACK_ORDER = ["medium", "short", "long", "extra_long"];
@@ -374,57 +353,6 @@ const buildLengthPattern = (lettersCount, limit) => {
   return { pattern, priority: ratios.map(({ group }) => group) };
 };
 
-const parseCsvRow = (line) => {
-  const result = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if (char === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  result.push(current);
-  return result.map((value) => value.trim());
-};
-
-const parseWordMetadataCsv = (text) => {
-  if (!text) return [];
-  const rows = text.trim().split(/\r?\n/);
-  if (rows.length <= 1) return [];
-  const headers = parseCsvRow(rows[0]);
-  const entries = [];
-  const seen = new Set();
-  for (let i = 1; i < rows.length; i += 1) {
-    const row = rows[i];
-    if (!row) continue;
-    const cells = parseCsvRow(row);
-    if (!cells.length) continue;
-    const record = {};
-    for (let j = 0; j < headers.length; j += 1) {
-      record[headers[j]] = cells[j] ?? "";
-    }
-    const entry = normalizeWordRecord(record);
-    if (entry && entry.recommended && !seen.has(entry.word)) {
-      seen.add(entry.word);
-      entries.push(entry);
-    }
-  }
-  return entries;
-};
-
 const getTypingFeatureScore = (features) => {
   if (!Array.isArray(features) || features.length === 0) return 0;
   return features.reduce(
@@ -468,14 +396,21 @@ const scoreWordEntry = (entry, letters, latestLetter, randomValue = 0) => {
 
 const buildLessonWords = (letters, seed, dictionary) => {
   if (!letters.length) return [];
-  const sourceEntries = dictionary.length > 0 ? dictionary : FALLBACK_WORD_ENTRIES;
-  const latestLetter = letters.at(-1);
+  const useFullAlphabet = letters.length >= ALPHABET.length;
+  const allowedLetters = useFullAlphabet ? ALPHABET : letters;
+  const latestLetter = useFullAlphabet ? null : allowedLetters.at(-1);
+  const dictionaryEntries =
+    useFullAlphabet && dictionary.length > 0
+      ? dictionary.filter((entry) => entry.notes !== "fallback")
+      : dictionary;
+  const sourceEntries =
+    dictionaryEntries.length > 0 ? dictionaryEntries : FALLBACK_WORD_ENTRIES;
   let availableEntries = [];
   for (let i = 0; i < WORD_FILTER_LEVELS.length; i += 1) {
     const options = WORD_FILTER_LEVELS[i];
     const pool = sourceEntries.filter((entry) => {
       if (!entry?.word) return false;
-      if (!wordUsesLetters(entry.word, letters)) return false;
+      if (!wordUsesLetters(entry.word, allowedLetters)) return false;
       if (
         !options.includeShortWords &&
         entry.word.length <= 2
@@ -494,7 +429,7 @@ const buildLessonWords = (letters, seed, dictionary) => {
   }
 
   if (availableEntries.length === 0) {
-    return letters.map((letter) => `${letter}${letter}${letter}`);
+    return allowedLetters.map((letter) => `${letter}${letter}${letter}`);
   }
 
   const scoreSeed = seed + letters.length * 31;
@@ -510,9 +445,11 @@ const buildLessonWords = (letters, seed, dictionary) => {
   const poolSize = Math.max(limit * 3, 60);
   const topPool = scoredEntries.slice(0, Math.min(poolSize, scoredEntries.length));
   const focusPool =
-    latestLetter && topPool.some((item) => item.entry.word.includes(latestLetter))
-      ? topPool.filter((item) => item.entry.word.includes(latestLetter))
-      : topPool;
+    !latestLetter || useFullAlphabet
+      ? topPool
+      : topPool.some((item) => item.entry.word.includes(latestLetter))
+        ? topPool.filter((item) => item.entry.word.includes(latestLetter))
+        : topPool;
 
   const preparedPool = shuffleWithSeed(focusPool, seed).map((item) => item.entry);
   if (preparedPool.length === 0) {
@@ -882,9 +819,12 @@ export default function Home() {
     const loadDictionary = async () => {
       try {
         const response = await fetch(WORD_DATA_URL);
-        const text = await response.text();
+        if (!response.ok) {
+          throw new Error(`Failed to fetch dictionary (${response.status})`);
+        }
+        const payload = await response.json();
         if (cancelled) return;
-        const entries = parseWordMetadataCsv(text);
+        const entries = sanitizeDictionaryEntries(payload);
         setDictionary(mergeWithFallbackEntries(entries));
       } catch (error) {
         console.error("Failed to load word metadata", error);
