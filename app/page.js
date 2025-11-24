@@ -967,6 +967,16 @@ export default function Home() {
     [lessonsPerUnlock, targetWpm, unlockedCount],
   );
 
+  const unlockAllLetters = useCallback(() => {
+    setUnlockedCount(LETTER_SEQUENCE.length);
+    setSuccessCounter(0);
+  }, []);
+
+  const resetLetterProgress = useCallback(() => {
+    setUnlockedCount(INITIAL_LETTERS.length);
+    setSuccessCounter(0);
+  }, []);
+
   const clearLessonState = useCallback(() => {
     setUserInput("");
     setStartTime(null);
@@ -1368,6 +1378,8 @@ export default function Home() {
             nextLetter={nextLetter}
             codingLanguage={codingLanguage}
             setCodingLanguage={setCodingLanguage}
+            onUnlockAllLetters={unlockAllLetters}
+            onResetLetterProgress={resetLetterProgress}
           />
         )}
       </div>
@@ -2084,7 +2096,8 @@ function DualAxisProgressChart({
     rawAccuracy: lesson.accuracy,
   }));
 
-  const xDomainMax = Math.max(totalLessons, 1);
+  const xDomainMin = lessons[0]?.lessonNumber ?? 1;
+  const xDomainMax = Math.max(lessons.at(-1)?.lessonNumber ?? xDomainMin, xDomainMin);
   const yLeftMax = Math.max(
     targetWpm + 15,
     ...chartPoints.map((point) => point.wpm),
@@ -2093,10 +2106,12 @@ function DualAxisProgressChart({
   const yRightMax = 100;
 
   const xScale = (lessonNumber) => {
-    if (xDomainMax === 1) return chartWidth / 2;
+    if (xDomainMax === xDomainMin) {
+      return paddingX + (chartWidth - paddingX * 2) / 2;
+    }
     return (
       paddingX +
-      ((lessonNumber - 1) / (xDomainMax - 1)) * (chartWidth - paddingX * 2)
+      ((lessonNumber - xDomainMin) / (xDomainMax - xDomainMin)) * (chartWidth - paddingX * 2)
     );
   };
 
@@ -2438,6 +2453,8 @@ function SettingsSection({
   nextLetter,
   codingLanguage,
   setCodingLanguage,
+  onUnlockAllLetters,
+  onResetLetterProgress,
 }) {
   return (
     <section className="w-full rounded-3xl border border-white/10 bg-slate-900/50 p-6">
@@ -2489,6 +2506,22 @@ function SettingsSection({
           Next unlock: {nextLetter ?? "complete"} (
           {nextLetter ? "maintain target WPM to progress" : "all done"})
         </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={onUnlockAllLetters}
+            className="rounded-2xl bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-950 transition hover:bg-emerald-400"
+          >
+            Unlock all letters
+          </button>
+          <button
+            type="button"
+            onClick={onResetLetterProgress}
+            className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:border-rose-400/50"
+          >
+            Reset letter progress
+          </button>
+        </div>
       </div>
     </section>
   );
