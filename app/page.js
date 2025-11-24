@@ -219,6 +219,117 @@ const createFallbackEntry = (word) => ({
 
 const FALLBACK_WORD_ENTRIES = FALLBACK_WORD_BANK.map((word) => createFallbackEntry(word));
 
+const mergeWithFallbackEntries = (entries) => {
+  const map = new Map();
+  entries.forEach((entry) => {
+    if (entry?.word) {
+      map.set(entry.word, entry);
+    }
+  });
+  FALLBACK_WORD_ENTRIES.forEach((entry) => {
+    if (entry?.word && !map.has(entry.word)) {
+      map.set(entry.word, entry);
+    }
+  });
+  return Array.from(map.values());
+};
+
+const LENGTH_FALLBACK_ORDER = ["medium", "short", "long", "extra_long"];
+
+const getLengthRatioPlan = (lettersCount) => {
+  if (lettersCount <= 4) {
+    return [
+      { group: "medium", weight: 0.4 },
+      { group: "short", weight: 0.5 },
+      { group: "long", weight: 0.1 },
+    ];
+  }
+  if (lettersCount <= 8) {
+    return [
+      { group: "medium", weight: 0.5 },
+      { group: "short", weight: 0.3 },
+      { group: "long", weight: 0.2 },
+    ];
+  }
+  if (lettersCount <= 13) {
+    return [
+      { group: "medium", weight: 0.45 },
+      { group: "long", weight: 0.25 },
+      { group: "short", weight: 0.2 },
+      { group: "extra_long", weight: 0.1 },
+    ];
+  }
+  return [
+    { group: "medium", weight: 0.4 },
+    { group: "long", weight: 0.3 },
+    { group: "short", weight: 0.15 },
+    { group: "extra_long", weight: 0.15 },
+  ];
+};
+
+const buildLengthQuotas = (ratios, limit) => {
+  const quotas = {};
+  let total = 0;
+  ratios.forEach(({ group, weight }) => {
+    const count = Math.max(0, Math.round(weight * limit));
+    quotas[group] = count;
+    total += count;
+  });
+  if (total > limit) {
+    let diff = total - limit;
+    for (let i = ratios.length - 1; i >= 0 && diff > 0; i -= 1) {
+      const group = ratios[i].group;
+      const reduction = Math.min(diff, quotas[group]);
+      quotas[group] -= reduction;
+      diff -= reduction;
+    }
+  } else if (total < limit) {
+    let diff = limit - total;
+    while (diff > 0) {
+      for (let i = 0; i < ratios.length && diff > 0; i += 1) {
+        const group = ratios[i].group;
+        quotas[group] += 1;
+        diff -= 1;
+      }
+    }
+  }
+  return quotas;
+};
+
+const buildLengthPattern = (lettersCount, limit) => {
+  const ratios = getLengthRatioPlan(lettersCount);
+  const quotas = buildLengthQuotas(ratios, limit);
+  const queue = ratios.map(({ group }) => ({
+    group,
+    remaining: quotas[group] ?? 0,
+  }));
+  const pattern = [];
+  while (pattern.length < limit) {
+    let added = false;
+    for (let i = 0; i < queue.length && pattern.length < limit; i += 1) {
+      if (queue[i].remaining > 0) {
+        pattern.push(queue[i].group);
+        queue[i].remaining -= 1;
+        added = true;
+      }
+    }
+    if (!added) break;
+  }
+  if (pattern.length < limit) {
+    const priority = queue.map((entry) => entry.group).filter(Boolean);
+    const fallbackOrder = priority.length
+      ? priority
+      : [...LENGTH_FALLBACK_ORDER];
+    let index = 0;
+    while (pattern.length < limit) {
+      const group = fallbackOrder[index % fallbackOrder.length];
+      pattern.push(group);
+      index += 1;
+    }
+  }
+  return { pattern, priority: ratios.map(({ group }) => group) };
+};
+
 const parseCsvRow = (line) => {
   const result = [];
   let current = "";
@@ -320,7 +431,8 @@ const buildLessonWords = (letters, seed, dictionary) => {
       entry?.word &&
       entry.recommended &&
       wordUsesLetters(entry.word, letters) &&
-      entry.obscurityLevel !== "high",
+      entry.obscurityLevel !== "high" &&
+      entry.word.length > 2,
   );
 
   if (availableEntries.length === 0) {
@@ -349,12 +461,71 @@ const buildLessonWords = (letters, seed, dictionary) => {
     return letters.map((letter) => `${letter}${letter}${letter}`);
   }
 
-  const selection = [];
-  for (let i = 0; i < limit; i += 1) {
-    selection.push(preparedPool[i % preparedPool.length].word);
+  const { pattern: lengthPattern, priority } = buildLengthPattern(letters.length, limit);
+  const fallbackGroups = Array.from(new Set([...priority, ...LENGTH_FALLBACK_ORDER]));
+  const buckets = preparedPool.reduce((acc, entry) => {
+    const group = entry.lengthGroup ?? determineLengthGroup(entry.word.length);
+    if (!acc[group]) {
+      acc[group] = [];
+    }
+    acc[group].push(entry);
+    return acc;
+  }, {});
+
+  const popFromGroup = (group) => {
+    const bucket = buckets[group];
+    if (bucket && bucket.length) {
+      return bucket.shift();
+    }
+    return null;
+  };
+
+  const takeFromAny = () => {
+    for (let i = 0; i < fallbackGroups.length; i += 1) {
+      const candidate = popFromGroup(fallbackGroups[i]);
+      if (candidate) return candidate;
+    }
+    const secondaryGroups = Object.keys(buckets).filter(
+      (group) => !fallbackGroups.includes(group),
+    );
+    for (let i = 0; i < secondaryGroups.length; i += 1) {
+      const candidate = popFromGroup(secondaryGroups[i]);
+      if (candidate) return candidate;
+    }
+    return null;
+  };
+
+  const selectedEntries = [];
+  for (let i = 0; i < lengthPattern.length && selectedEntries.length < limit; i += 1) {
+    const desiredGroup = lengthPattern[i];
+    const nextEntry = popFromGroup(desiredGroup) ?? takeFromAny();
+    if (!nextEntry) break;
+    selectedEntries.push(nextEntry);
   }
 
-  return selection;
+  if (selectedEntries.length < limit) {
+    const remainingEntries = Object.values(buckets).flat();
+    const fillSource =
+      remainingEntries.length > 0
+        ? remainingEntries
+        : preparedPool.length > 0
+          ? preparedPool
+          : [];
+    let fillIndex = 0;
+    while (selectedEntries.length < limit) {
+      if (fillSource.length > 0) {
+        selectedEntries.push(fillSource[fillIndex % fillSource.length]);
+        fillIndex += 1;
+      } else {
+        const helperLetter = latestLetter ?? letters[0];
+        if (!helperLetter) break;
+        const helperWord = `${helperLetter}${letters[0] ?? helperLetter}${helperLetter}`;
+        selectedEntries.push(createFallbackEntry(helperWord));
+      }
+    }
+  }
+
+  return selectedEntries.slice(0, limit).map((entry) => entry.word);
 };
 
 const highlightLessonText = (target, typed, mistakeMap) =>
@@ -656,9 +827,10 @@ export default function Home() {
         const text = await response.text();
         if (cancelled) return;
         const entries = parseWordMetadataCsv(text);
-        setDictionary(entries);
+        setDictionary(mergeWithFallbackEntries(entries));
       } catch (error) {
         console.error("Failed to load word metadata", error);
+        setDictionary(FALLBACK_WORD_ENTRIES);
       }
     };
     loadDictionary();
