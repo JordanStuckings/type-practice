@@ -1012,7 +1012,9 @@ const MAX_PROMPT_CHARACTERS_PER_LINE = 23;
 const PROMPT_GRID_LINE_CLASS =
   "grid w-full justify-center gap-3 text-center font-mono text-4xl tracking-tight text-white sm:text-5xl";
 const PROMPT_GRID_CELL_CLASS =
-  "flex min-h-[3.5rem] items-center justify-center rounded-2xl border border-white/10 bg-slate-900/40 px-2 sm:min-h-[4.5rem]";
+  "flex min-h-[3.5rem] items-center justify-center px-2 sm:min-h-[4.5rem]";
+const PROMPT_GRID_FILLER_CLASS =
+  "pointer-events-none flex min-h-[3.5rem] select-none items-center justify-center px-2 text-transparent sm:min-h-[4.5rem]";
 
 const buildPromptLineRanges = (text, maxChars = MAX_PROMPT_CHARACTERS_PER_LINE) => {
   if (!text) return [];
@@ -1051,6 +1053,14 @@ function LessonSurface({ highlightedPrompt, lessonText, onClick }) {
     return ranges.map(({ start, end }) => highlightedPrompt.slice(start, end));
   }, [highlightedPrompt, lessonText]);
 
+  const gridColumnCount = Math.max(
+    1,
+    Math.min(
+      MAX_PROMPT_CHARACTERS_PER_LINE,
+      promptLines.reduce((max, line) => Math.max(max, line.length), 0),
+    ),
+  );
+
   return (
     <section
       className="relative flex min-h-[60vh] w-full items-center justify-center rounded-3xl border border-white/5 bg-slate-900/40 p-16 shadow-2xl shadow-black/40"
@@ -1062,10 +1072,7 @@ function LessonSurface({ highlightedPrompt, lessonText, onClick }) {
             key={`prompt-line-${index}`}
             className={PROMPT_GRID_LINE_CLASS}
             style={{
-              gridTemplateColumns: `repeat(${Math.max(
-                1,
-                Math.min(line.length, MAX_PROMPT_CHARACTERS_PER_LINE),
-              )}, minmax(0, 1fr))`,
+              gridTemplateColumns: `repeat(${gridColumnCount}, minmax(0, 1fr))`,
             }}
           >
             {line.map((character, charIndex) => (
@@ -1073,6 +1080,17 @@ function LessonSurface({ highlightedPrompt, lessonText, onClick }) {
                 {character}
               </span>
             ))}
+            {Array.from({ length: Math.max(0, gridColumnCount - line.length) }).map(
+              (_, fillerIndex) => (
+                <span
+                  key={`prompt-filler-${index}-${fillerIndex}`}
+                  className={PROMPT_GRID_FILLER_CLASS}
+                  aria-hidden
+                >
+                  &nbsp;
+                </span>
+              ),
+            )}
           </div>
         ))}
       </div>
